@@ -37,3 +37,5 @@ build/
 
 ### Mac OS ###
 .DS_Store
+# 本地持久化数据目录（事件 + 投递进度）
+data/
