@@ -7,7 +7,9 @@ import com.github.lisama569.springauditeventpipelinejava.compliance.RuleEngine;
 import com.github.lisama569.springauditeventpipelinejava.compliance.RuleParseException;
 import com.github.lisama569.springauditeventpipelinejava.compliance.RuleRegistry;
 import com.github.lisama569.springauditeventpipelinejava.forward.ForwardingService;
-import com.github.lisama569.springauditeventpipelinejava.forward.LocalAuditSink;
+import com.github.lisama569.springauditeventpipelinejava.recovery.DurableDeliveryStateStore;
+import com.github.lisama569.springauditeventpipelinejava.recovery.DurableEventStore;
+import com.github.lisama569.springauditeventpipelinejava.recovery.DurableLocalAuditSink;
 import com.github.lisama569.springauditeventpipelinejava.ingest.AuditLedger;
 import com.github.lisama569.springauditeventpipelinejava.model.IngestResult;
 import com.github.lisama569.springauditeventpipelinejava.model.RuleVerdict;
@@ -16,9 +18,11 @@ import com.github.lisama569.springauditeventpipelinejava.pipeline.AuditPipeline;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -30,18 +34,25 @@ class ComplianceAndForwardingTest {
 
     private static final Logger log = LoggerFactory.getLogger(ComplianceAndForwardingTest.class);
 
+    @TempDir
+    Path dataDir;
+
     private AuditLedger ledger;
     private RuleRegistry registry;
-    private LocalAuditSink sink;
+    private DurableLocalAuditSink sink;
     private ForwardingService forwarding;
     private AuditPipeline pipeline;
 
     @BeforeEach
     void setUp() {
-        ledger = new AuditLedger();
+        DurableEventStore eventStore = new DurableEventStore(dataDir.resolve("events.log"));
+        DurableDeliveryStateStore stateStore =
+                new DurableDeliveryStateStore(dataDir.resolve("delivery-state.log"));
+        ledger = new AuditLedger(eventStore);
         registry = new RuleRegistry();
-        sink = new LocalAuditSink();
-        forwarding = new ForwardingService(sink);
+        sink = new DurableLocalAuditSink(dataDir.resolve("sink-delivered.log"));
+        sink.recover();
+        forwarding = new ForwardingService(sink, stateStore, eventStore);
         forwarding.start();
         pipeline = new AuditPipeline(ledger, registry, new RuleEngine(), forwarding);
     }
